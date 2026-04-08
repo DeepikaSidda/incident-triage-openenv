@@ -6,8 +6,9 @@ task listing. This keeps the HF Space running and accessible for evaluation.
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
+from typing import Optional
 
 from environment import IncidentTriageEnv
 from models import Action
@@ -65,7 +66,7 @@ def list_tasks():
 
 
 @app.post("/reset")
-def reset(req: ResetRequest | None = None):
+def reset(req: Optional[ResetRequest] = Body(default=None)):
     """Reset the environment to a task's initial state."""
     try:
         task_name = req.task_name if req else None
