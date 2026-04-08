@@ -202,9 +202,12 @@ def run_all_tasks() -> dict[str, float]:
                 # Determine error string
                 error_str = obs.error_message if obs.error_message else "null"
 
+                # Format action as a readable string
+                action_str = f"{action.action_type}('{action.target}')"
+
                 print(
                     f"[STEP]  step={step_num} "
-                    f"action={action.action_type} "
+                    f"action={action_str} "
                     f"reward={reward.score:.2f} "
                     f"done={'true' if done else 'false'} "
                     f"error={error_str}"
