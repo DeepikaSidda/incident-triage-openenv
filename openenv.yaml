@@ -1,0 +1,10 @@
+name: incident-triage
+description: "Incident Response Triage environment — AI agents investigate security incidents, triage alerts, correlate evidence, and take remediation actions"
+author: "hackathon-team"
+version: "1.0.0"
+tags:
+  - openenv
+  - security
+  - incident-response
+  - triage
+entry_point: "environment:IncidentTriageEnv"
