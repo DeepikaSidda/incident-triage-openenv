@@ -65,10 +65,11 @@ def list_tasks():
 
 
 @app.post("/reset")
-def reset(req: ResetRequest):
+def reset(req: ResetRequest | None = None):
     """Reset the environment to a task's initial state."""
     try:
-        obs = env.reset(req.task_name)
+        task_name = req.task_name if req else None
+        obs = env.reset(task_name)
         return {"observation": obs.model_dump()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
