@@ -164,13 +164,14 @@ class Grader:
 
         total_weight = sum(weights.values())
         if total_weight == 0:
-            return 0.0, breakdown
+            return 0.01, breakdown
 
         weighted_sum = sum(
             breakdown[c] * weights[c] for c in weights
         )
         final_score = weighted_sum / total_weight
-        final_score = max(0.0, min(1.0, final_score))
+        # Clamp to strictly (0, 1) — never exactly 0.0 or 1.0
+        final_score = max(0.01, min(0.99, final_score))
 
         return final_score, breakdown
 
