@@ -163,8 +163,8 @@ class IncidentTriageEnv:
             info["final_score"] = final_score
             info["score_breakdown"] = breakdown
 
-        # Clamp reward to [0, 1] for the Reward model
-        clamped_reward = max(0.0, min(1.0, step_reward))
+        # Clamp reward to strictly (0, 1) for the Reward model
+        clamped_reward = max(0.01, min(0.99, step_reward))
         obs = self._build_observation(error_message=error_message)
         return obs, Reward(score=clamped_reward), self._done, info
 
@@ -287,7 +287,7 @@ class IncidentTriageEnv:
             info["score_breakdown"] = breakdown
 
         obs = self._build_observation(error_message=message)
-        return obs, Reward(score=0.0), self._done, info
+        return obs, Reward(score=0.01), self._done, info
 
     def _terminal_response(
         self,
@@ -296,7 +296,7 @@ class IncidentTriageEnv:
         obs = self._build_observation(
             error_message="Episode is already done. No further actions accepted."
         )
-        return obs, Reward(score=0.0), True, {}
+        return obs, Reward(score=0.01), True, {}
 
     def _update_repeat_tracking(self, action_dict: dict) -> None:
         """Update consecutive repeat counter."""

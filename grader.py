@@ -158,9 +158,11 @@ class Grader:
         for criterion in weights:
             fn = scorer.get(criterion)
             if fn is not None:
-                breakdown[criterion] = fn(task, env_state)
+                # Clamp each criterion to strictly (0, 1)
+                raw = fn(task, env_state)
+                breakdown[criterion] = max(0.01, min(0.99, raw))
             else:
-                breakdown[criterion] = 0.0
+                breakdown[criterion] = 0.01
 
         total_weight = sum(weights.values())
         if total_weight == 0:
