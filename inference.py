@@ -176,7 +176,7 @@ def run_all_tasks() -> dict[str, float]:
     results: dict[str, float] = {}
 
     for task_name in TASK_REGISTRY:
-        final_score = 0.0
+        final_score = 0.01
         rewards: list[float] = []
         step_num = 0
         success = False
@@ -197,7 +197,9 @@ def run_all_tasks() -> dict[str, float]:
                 # Step the environment
                 obs, reward, done, info = env.step(action)
                 step_num += 1
-                rewards.append(reward.score)
+                # Clamp reward to strictly (0, 1) for output
+                clamped_r = max(0.01, min(0.99, reward.score))
+                rewards.append(clamped_r)
 
                 # Determine error string
                 error_str = obs.error_message if obs.error_message else "null"
@@ -208,19 +210,19 @@ def run_all_tasks() -> dict[str, float]:
                 print(
                     f"[STEP]  step={step_num} "
                     f"action={action_str} "
-                    f"reward={reward.score:.2f} "
+                    f"reward={clamped_r:.2f} "
                     f"done={'true' if done else 'false'} "
                     f"error={error_str}"
                 )
 
                 if done:
-                    final_score = info.get("final_score", 0.0)
+                    final_score = info.get("final_score", 0.01)
                     success = True
 
         except Exception as exc:
             print(f"[stderr] Environment error on task '{task_name}': {exc}", file=sys.stderr)
             success = False
-            final_score = 0.0
+            final_score = 0.01
 
         # Always emit [END]
         rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else ""
