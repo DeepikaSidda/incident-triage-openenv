@@ -50,7 +50,7 @@ class Action(BaseModel):
 class Reward(BaseModel):
     """A score representing the quality of the agent's most recent action."""
 
-    score: float = Field(ge=0.0, le=1.0)
+    score: float = Field(gt=0.0, lt=1.0)
 
 from dataclasses import dataclass, field
 
