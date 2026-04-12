@@ -98,9 +98,13 @@ def step(req: StepRequest):
     obs, reward, done, info = env.step(action)
     # Clamp reward to strictly (0, 1)
     clamped = max(0.01, min(0.99, reward.score))
-    # Also clamp final_score in info if present
+    # Also clamp final_score and all breakdown scores in info
     if "final_score" in info:
         info["final_score"] = max(0.01, min(0.99, info["final_score"]))
+    if "score_breakdown" in info:
+        info["score_breakdown"] = {
+            k: max(0.01, min(0.99, v)) for k, v in info["score_breakdown"].items()
+        }
     return StepResponse(
         observation=obs.model_dump(),
         reward=clamped,
