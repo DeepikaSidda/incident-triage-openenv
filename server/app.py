@@ -1,121 +1,118 @@
-"""FastAPI server exposing the OpenEnv Incident Response Triage environment.
-
-Provides REST endpoints for the OpenEnv interface: reset, step, state, and
-task listing. Runs on port 7860 for HF Spaces compatibility.
-"""
+"""OpenEnv-compliant server for the Incident Response Triage environment."""
 
 from __future__ import annotations
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel
-from typing import Optional
-
 import sys
 import os
+import uvicorn
 
-# Add project root to path so imports work
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from openenv.core.env_server import (
+    Environment,
+    Observation as OpenEnvObservation,
+    Action as OpenEnvAction,
+    State as OpenEnvState,
+    create_app,
+)
+from pydantic import Field
+from typing import Any, Optional
+
 from environment import IncidentTriageEnv
-from models import Action
+from models import Action as LocalAction
 from tasks import TASK_REGISTRY
 
-app = FastAPI(
-    title="Incident Response Triage — OpenEnv",
-    description="OpenEnv-compliant environment for IT/security incident response triage",
-    version="1.0.0",
-)
+_MIN = 0.01
+_MAX = 0.99
 
-env = IncidentTriageEnv()
+def _clamp(v):
+    return max(_MIN, min(_MAX, float(v)))
 
 
-class ResetRequest(BaseModel):
-    task_name: str | None = None
+class TriageAction(OpenEnvAction):
+    action_type: str = "investigate"
+    target: str = ""
+    parameters: dict = Field(default_factory=dict)
 
 
-class StepRequest(BaseModel):
-    action_type: str
-    target: str
-    parameters: dict = {}
+class TriageObservation(OpenEnvObservation):
+    task_description: str = ""
+    alerts: list = Field(default_factory=list)
+    logs: list = Field(default_factory=list)
+    system_status: dict = Field(default_factory=dict)
+    available_actions: list = Field(default_factory=list)
+    step_count: int = 0
+    max_steps: int = 0
+    error_message: Optional[str] = None
 
 
-class StepResponse(BaseModel):
-    observation: dict
-    reward: float
-    done: bool
-    info: dict
+class TriageEnvironment(Environment[TriageAction, TriageObservation, OpenEnvState]):
 
+    def __init__(self):
+        super().__init__()
+        self._env = IncidentTriageEnv()
 
-@app.get("/")
-def root():
-    return {
-        "environment": "incident-triage",
-        "version": "1.0.0",
-        "tasks": list(TASK_REGISTRY.keys()),
-        "status": "running",
-    }
-
-
-@app.get("/health")
-def health():
-    return {"status": "healthy", "service": "incident-triage"}
-
-
-@app.get("/tasks")
-def list_tasks():
-    return {
-        name: {
-            "difficulty": t.difficulty,
-            "max_steps": t.max_steps,
-            "description": t.description,
-        }
-        for name, t in TASK_REGISTRY.items()
-    }
-
-
-@app.post("/reset")
-def reset(req: Optional[ResetRequest] = Body(default=None)):
-    try:
-        task_name = req.task_name if req else None
-        obs = env.reset(task_name)
-        return {"observation": obs.model_dump()}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/step")
-def step(req: StepRequest):
-    try:
-        action = Action(
-            action_type=req.action_type,
-            target=req.target,
-            parameters=req.parameters,
+    def reset(self, seed=None, episode_id=None, **kwargs):
+        task_name = kwargs.get("task_name", None)
+        if task_name is None:
+            task_name = next(iter(TASK_REGISTRY))
+        obs = self._env.reset(task_name)
+        return TriageObservation(
+            task_description=obs.task_description,
+            alerts=[a.model_dump() for a in obs.alerts],
+            logs=[l.model_dump() for l in obs.logs],
+            system_status=obs.system_status,
+            available_actions=obs.available_actions,
+            step_count=obs.step_count,
+            max_steps=obs.max_steps,
+            error_message=obs.error_message,
+            done=False,
+            reward=_clamp(0.5),
         )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid action: {e}")
 
-    obs, reward, done, info = env.step(action)
-    # Clamp reward to strictly (0, 1)
-    clamped = max(0.01, min(0.99, reward.score))
-    # Also clamp final_score and all breakdown scores in info
-    if "final_score" in info:
-        info["final_score"] = max(0.01, min(0.99, info["final_score"]))
-    if "score_breakdown" in info:
-        info["score_breakdown"] = {
-            k: max(0.01, min(0.99, v)) for k, v in info["score_breakdown"].items()
-        }
-    return StepResponse(
-        observation=obs.model_dump(),
-        reward=clamped,
-        done=done,
-        info=info,
-    )
+    def step(self, action: TriageAction, timeout_s=None, **kwargs):
+        try:
+            local_action = LocalAction(
+                action_type=action.action_type,
+                target=action.target,
+                parameters=action.parameters,
+            )
+        except Exception:
+            comps = sorted(self._env._current_task.valid_components)
+            local_action = LocalAction(
+                action_type="escalate",
+                target=comps[0],
+                parameters={"reason": "invalid action"},
+            )
+        obs, reward, done, info = self._env.step(local_action)
+        return TriageObservation(
+            task_description=obs.task_description,
+            alerts=[a.model_dump() for a in obs.alerts],
+            logs=[l.model_dump() for l in obs.logs],
+            system_status=obs.system_status,
+            available_actions=obs.available_actions,
+            step_count=obs.step_count,
+            max_steps=obs.max_steps,
+            error_message=obs.error_message,
+            done=done,
+            reward=_clamp(reward.score),
+            metadata=info,
+        )
+
+    def state(self):
+        s = self._env.state()
+        return OpenEnvState(
+            episode_id=s.get("task_name", "unknown"),
+            step_count=s.get("step_count", 0),
+        )
 
 
-@app.get("/state")
-def state():
-    return env.state()
+app = create_app(
+    env=TriageEnvironment,
+    action_cls=TriageAction,
+    observation_cls=TriageObservation,
+    env_name="incident-triage",
+)
 
 
 def main():
