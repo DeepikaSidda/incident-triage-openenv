@@ -115,6 +115,51 @@ app = create_app(
 )
 
 
+# Add custom endpoints that the hackathon validator expects
+@app.get("/")
+def root():
+    return {
+        "environment": "incident-triage",
+        "version": "1.0.0",
+        "tasks": list(TASK_REGISTRY.keys()),
+        "status": "running",
+    }
+
+
+# Keep the REST /reset and /step endpoints for the Phase 1 validator
+_rest_env = IncidentTriageEnv()
+
+
+@app.post("/reset")
+def rest_reset(req: dict = None):
+    task_name = None
+    if req and "task_name" in req:
+        task_name = req["task_name"]
+    obs = _rest_env.reset(task_name)
+    return {"observation": obs.model_dump()}
+
+
+@app.post("/step")
+def rest_step(req: dict = {}):
+    local_action = LocalAction(
+        action_type=req.get("action_type", "escalate"),
+        target=req.get("target", sorted(_rest_env._current_task.valid_components)[0]),
+        parameters=req.get("parameters", {}),
+    )
+    obs, reward, done, info = _rest_env.step(local_action)
+    clamped = _clamp(reward.score)
+    if "final_score" in info:
+        info["final_score"] = _clamp(info["final_score"])
+    if "score_breakdown" in info:
+        info["score_breakdown"] = {k: _clamp(v) for k, v in info["score_breakdown"].items()}
+    return {"observation": obs.model_dump(), "reward": clamped, "done": done, "info": info}
+
+
+@app.get("/state")
+def rest_state():
+    return _rest_env.state()
+
+
 def main():
     uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
 
